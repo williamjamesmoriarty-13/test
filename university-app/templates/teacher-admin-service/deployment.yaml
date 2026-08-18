@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.teacherAdminService.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.teacherAdminService.name }}
+    app.kubernetes.io/part-of: university-app
+    app.kubernetes.io/version: {{ .Values.image.tag | quote }}
+spec:
+  replicas: {{ .Values.teacherAdminService.replicas.min }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.teacherAdminService.name }}
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+      labels:
+        app.kubernetes.io/name: {{ .Values.teacherAdminService.name }}
+        app.kubernetes.io/part-of: university-app
+        app.kubernetes.io/version: {{ .Values.image.tag | quote }}
+    spec:
+      containers:
+        - name: {{ .Values.teacherAdminService.name }}
+          image: "{{ .Values.image.registry }}/{{ .Values.teacherAdminService.image }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.teacherAdminService.port }}
+          env:
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: TEACHER_ADMIN_DB_USER } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: TEACHER_ADMIN_DB_PASSWORD } }
+            - name: DB_NAME
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POSTGRES_DB } }
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: {{ .Values.postgres.port | quote }}
+            - name: DB_SCHEMA
+              value: {{ .Values.teacherAdminService.env.dbSchema | quote }}
+            - name: MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILESHISTOGRAM_HTTP_SERVER_REQUESTS
+              value: {{ .Values.teacherAdminService.env.percentilesHistogram | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "{{ .Values.teacherAdminService.name }}"
+          resources:
+            {{- toYaml .Values.teacherAdminService.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.teacherAdminService.port }}
+            initialDelaySeconds: 55
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.teacherAdminService.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
