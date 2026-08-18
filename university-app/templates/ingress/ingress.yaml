@@ -93,3 +93,4 @@ spec:
                 name: {{ .Values.enrollmentService.name }}
                 port:
                   number: {{ .Values.enrollmentService.port }}
+
